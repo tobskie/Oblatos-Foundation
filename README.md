@@ -1,103 +1,86 @@
 # Oblatos Foundation Donation Management System
 
-A web-based donation management system for Oblatos Foundation, built with PHP and MySQL.
+A web-based donation management system for Oblatos Foundation that handles donor management, donation tracking, and receipt generation.
 
 ## Features
 
-- Multi-user roles (Admin, Cashier, Donor)
-- Secure donation processing
-- Real-time donation verification
-- Donor tier management
-- Email notifications
-- Payment receipt management
-- Donation history tracking
+- User Management (Admin, Cashier, Donor roles)
+- Secure Authentication System
+- Donation Processing and Tracking
+- Receipt Generation
+- Donor Profile Management
+- Administrative Dashboard
+- Payment Method Integration (GCash, Bank Transfer)
 
 ## Requirements
 
 - PHP 7.4 or higher
 - MySQL 5.7 or higher
-- XAMPP/WAMP/MAMP
-- Composer (for dependencies)
+- Composer
+- Web Server (Apache/Nginx)
 
 ## Installation
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/oblatos-foundation.git
-   ```
+```bash
+git clone https://github.com/yourusername/oblatos-foundation.git
+cd oblatos-foundation
+```
 
 2. Install dependencies:
-   ```bash
-   composer install
-   ```
+```bash
+composer install
+```
 
-3. Create a MySQL database named `oblatos_foundation`
+3. Create configuration files:
+```bash
+cp config/database.example.php config/database.php
+cp .env.example .env
+```
 
-4. Import the database structure:
-   - Use the provided `migrations/create_tables.sql` file
+4. Configure your environment:
+- Edit `config/database.php` with your database credentials
+- Update `.env` with your environment-specific settings
 
-5. Configure the application:
-   - Copy `config/email_config.example.php` to `config/email_config.php`
-   - Update the email configuration with your SMTP details
+5. Set up the database:
+```bash
+php cli_run_migration.php
+```
 
-6. Set up the upload directories:
-   ```bash
-   mkdir -p uploads/receipts
-   chmod 777 uploads/receipts
-   ```
-
-7. Create default admin account:
-   ```bash
-   php create_admin.php
-   ```
-
-## Configuration
-
-1. Database Configuration:
-   - Edit `config/database.php` with your database credentials
-
-2. Email Configuration:
-   - Edit `config/email_config.php` with your SMTP settings
-
-3. Application Configuration:
-   - Edit `config/config.php` for general settings
-
-## Usage
-
-1. Access the application through your web server
-2. Log in with the default admin credentials:
-   - Username: admin
-   - Password: admin123 (change this immediately)
-
-## Security
-
-- Change default admin password after installation
-- Keep config files secure
-- Regular backups recommended
-- Monitor logs for suspicious activity
+6. Set proper permissions:
+```bash
+chmod 755 -R ./
+chmod 777 -R ./uploads
+chmod 777 -R ./logs
+```
 
 ## Directory Structure
 
-```
-oblatos-foundation/
-├── admin/           # Admin panel files
-├── cashier/         # Cashier panel files
-├── config/          # Configuration files
-├── donor/           # Donor panel files
-├── includes/        # Common include files
-├── migrations/      # Database migrations
-├── models/          # Data models
-├── uploads/         # File uploads
-└── utils/          # Utility classes
-```
+- `/admin` - Administrative interface files
+- `/cashier` - Cashier interface files
+- `/donor` - Donor interface files
+- `/config` - Configuration files
+- `/includes` - Common PHP includes
+- `/models` - Database models
+- `/utils` - Utility functions
+- `/uploads` - File upload directory
+- `/assets` - CSS, JavaScript, and image files
+
+## Security
+
+- All sensitive credentials should be stored in `.env`
+- Database backups are excluded from git
+- Upload directories are protected
+- Session management is implemented
+- Input validation and sanitization
 
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 
@@ -105,4 +88,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For support, email support@oblatosfoundation.org or create an issue in the repository. 
+For support, please email support@oblatos.org or open an issue in the GitHub repository. 

@@ -13,24 +13,44 @@
 .env
 .env.local
 .env.*.local
+.env.development
+.env.test
+.env.production
 
 # Upload directories
 /uploads/
 /uploads/receipts/
+/public/uploads/
 
 # Log files
 /logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Database backups
+# Database backups and configuration
 *.sql
+config/database.php
+config/email_config.php
+config/*_credentials.php
 
 # Cache files
 *.cache
-
-# Configuration files with sensitive information
-config/email_config.php
+.phpunit.result.cache
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+/temp/
+
+# Composer
+composer.phar
+
+# Session files
+/sessions/
+*.session
+
+# Build directories
+/dist/
+/build/ 

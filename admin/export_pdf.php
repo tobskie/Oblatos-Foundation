@@ -9,10 +9,12 @@ ini_set('display_errors', 1);
  * Supports filtering by year, month, and status
  */
 
+session_start();
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../models/User.php';
 require_once '../models/Donation.php';
+require_once '../utils/format_helpers.php';
 
 // Check if user is logged in and is an admin
 if (!isLoggedIn() || !hasRole('admin')) {
@@ -159,8 +161,8 @@ try {
     ob_end_flush();
 
 } catch (Exception $e) {
-    // Log the error
-    error_log("Error in admin/export_pdf.php: " . $e->getMessage());
+    // Log the error with more details
+    error_log("Error in admin/export_pdf.php: " . $e->getMessage() . "\n" . $e->getTraceAsString());
     
     // Display a user-friendly error message
     ?>
@@ -202,15 +204,15 @@ try {
                 border-radius: 4px;
                 margin-top: 20px;
             }
+            .back-button:hover {
+                background-color: #374151;
+            }
         </style>
     </head>
     <body>
         <div class="error-container">
             <h1 class="error-title">Error Generating Report</h1>
             <p class="error-message">We encountered an error while generating your report. Please try again later or contact support if the problem persists.</p>
-            <?php if (defined('APP_DEBUG') && APP_DEBUG): ?>
-            <p class="error-message"><strong>Debug Info:</strong> <?php echo htmlspecialchars($e->getMessage()); ?></p>
-            <?php endif; ?>
         </div>
         <a href="dashboard.php" class="back-button">Back to Dashboard</a>
     </body>

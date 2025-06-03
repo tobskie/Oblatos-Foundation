@@ -27,7 +27,7 @@ class User {
         return $user->create();
     }
     // Database connection and table name
-    private $conn;
+    private $db;
     private $table_name = "users";
     
    // Object properties
@@ -41,11 +41,13 @@ class User {
     public $status;
     public $created_at;
     public $phone_number;  // Added phone_number property
+    public $display_name;
+    public $roles = [];
         
     
     // Constructor with database connection
     public function __construct($db) {
-        $this->conn = $db;
+        $this->db = $db;
     }
     
     /**
@@ -66,54 +68,61 @@ class User {
     
     // Create new user
     public function create() {
-        // Sanitize inputs
-        $this->full_name = htmlspecialchars(strip_tags($this->full_name));
-        $this->email = htmlspecialchars(strip_tags($this->email));
-        $this->role = htmlspecialchars(strip_tags($this->role));
-        
-        // Generate username from email if not set
-        if (empty($this->username)) {
-            $this->username = strtok($this->email, '@');
+        try {
+            $this->db->beginTransaction();
+
+            // Insert into users table
+            $query = "INSERT INTO " . $this->table_name . "
+                    (uuid, username, email, password, created_at)
+                    VALUES
+                    (:uuid, :username, :email, :password, :created_at)";
+            
+            $stmt = $this->db->prepare($query);
+            
+            $this->uuid = uniqid('usr_', true);
+            $this->created_at = date('Y-m-d H:i:s');
+            
+            $stmt->bindParam(":uuid", $this->uuid);
+            $stmt->bindParam(":username", $this->username);
+            $stmt->bindParam(":email", $this->email);
+            $stmt->bindParam(":password", $this->password);
+            $stmt->bindParam(":created_at", $this->created_at);
+            
+            $stmt->execute();
+            $this->id = $this->db->lastInsertId();
+
+            // Insert into user_profiles
+            $query = "INSERT INTO user_profiles
+                    (user_id, full_name, display_name, status)
+                    VALUES
+                    (:user_id, :full_name, :display_name, :status)";
+            
+            $stmt = $this->db->prepare($query);
+            
+            $stmt->bindParam(":user_id", $this->id);
+            $stmt->bindParam(":full_name", $this->full_name);
+            $stmt->bindParam(":display_name", $this->display_name);
+            $stmt->bindParam(":status", $this->status);
+            
+            $stmt->execute();
+
+            // Assign roles
+            foreach ($this->roles as $role_name) {
+                $query = "INSERT INTO user_roles (user_id, role_id)
+                         SELECT :user_id, id FROM roles WHERE name = :role_name";
+                
+                $stmt = $this->db->prepare($query);
+                $stmt->bindParam(":user_id", $this->id);
+                $stmt->bindParam(":role_name", $role_name);
+                $stmt->execute();
+            }
+
+            $this->db->commit();
+            return true;
+        } catch(Exception $e) {
+            $this->db->rollBack();
+            throw $e;
         }
-        
-        // Set default status if not set
-        if (empty($this->status)) {
-            $this->status = 'active';
-        }
-        
-        // Generate UUID if not set
-        if (empty($this->uuid)) {
-            $this->uuid = $this->generate_uuid();
-        }
-        
-        // Hash the password
-        $password_hash = password_hash($this->password, PASSWORD_BCRYPT);
-        
-        // Insert query with username and uuid
-        $query = "INSERT INTO " . $this->table_name . " 
-                  SET uuid = :uuid,
-                      username = :username,
-                      full_name = :full_name, 
-                      email = :email, 
-                      password = :password, 
-                      role = :role,
-                      status = :status,
-                      created_at = NOW()";
-        
-        // Prepare the query
-        $stmt = $this->conn->prepare($query);
-        
-        // Bind values
-        $stmt->bindParam(':uuid', $this->uuid);
-        $stmt->bindParam(':username', $this->username);
-        $stmt->bindParam(':full_name', $this->full_name);
-        $stmt->bindParam(':email', $this->email);
-        $stmt->bindParam(':password', $password_hash);
-        $stmt->bindParam(':role', $this->role);
-        $stmt->bindParam(':status', $this->status);
-        
-        // Execute the query
-        return $stmt->execute();
     }
     
     // Check if email exists
@@ -128,7 +137,7 @@ class User {
                   LIMIT 0,1";
         
         // Prepare the query
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         
         // Bind email parameter
         $stmt->bindParam(1, $this->email);
@@ -146,146 +155,218 @@ class User {
     
     // Login user
     public function login($email, $password) {
-        // Sanitize inputs
+        // Sanitize email
         $email = htmlspecialchars(strip_tags($email));
         
         try {
-            // First try with status field
-            $query = "SELECT id, uuid, username, full_name, email, password, role, status
-                      FROM " . $this->table_name . " 
-                      WHERE email = ? 
+            // Query using the normalized schema
+            $query = "SELECT u.id, u.uuid, u.username, u.email, u.password,
+                             up.full_name, up.status,
+                             GROUP_CONCAT(r.name) as roles
+                      FROM " . $this->table_name . " u
+                      LEFT JOIN user_profiles up ON u.id = up.user_id
+                      LEFT JOIN user_roles ur ON u.id = ur.user_id
+                      LEFT JOIN roles r ON ur.role_id = r.id
+                      WHERE u.email = ?
+                      GROUP BY u.id
                       LIMIT 0,1";
             
             // Prepare the query
-            $stmt = $this->conn->prepare($query);
+            $stmt = $this->db->prepare($query);
             
             // Bind email parameter
             $stmt->bindParam(1, $email);
             
             // Execute the query
             $stmt->execute();
+            
+            // Check if user exists
+            if ($stmt->rowCount() > 0) {
+                // Get user data
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // Get status from profile or session
+                $status = $row['status'] ?? ($_SESSION['user_statuses'][$row['id']] ?? 'active');
+                
+                // Check if user is inactive
+                if ($status === 'inactive') {
+                    // Set error message
+                    $this->error = "Account is inactive. Please contact the administrator.";
+                    return false;
+                }
+                
+                // Verify password
+                if (password_verify($password, $row['password'])) {
+                    // Set user properties
+                    $this->id = $row['id'];
+                    $this->uuid = $row['uuid'] ?? null;
+                    $this->username = $row['username'];
+                    $this->full_name = $row['full_name'];
+                    $this->email = $row['email'];
+                    $this->roles = $row['roles'] ? explode(',', $row['roles']) : ['donor'];
+                    $this->role = $this->roles[0]; // For backward compatibility
+                    $this->status = $status;
+                    
+                    return true;
+                }
+            }
+            
+            return false;
         } catch (PDOException $e) {
-            // If there's an error related to the status column, try without it
-            if (strpos($e->getMessage(), "Unknown column 'status'") !== false) {
-                $query = "SELECT id, uuid, username, full_name, email, password, role
+            // If there's an error with the normalized schema, try the legacy schema
+            try {
+                $query = "SELECT id, uuid, username, full_name, email, password, role, status
                           FROM " . $this->table_name . " 
                           WHERE email = ? 
                           LIMIT 0,1";
                 
                 // Prepare the query
-                $stmt = $this->conn->prepare($query);
+                $stmt = $this->db->prepare($query);
                 
                 // Bind email parameter
                 $stmt->bindParam(1, $email);
                 
                 // Execute the query
                 $stmt->execute();
-            } else {
-                // If it's a different error, rethrow it
-                throw $e;
-            }
-        }
-        
-        // Check if user exists
-        if ($stmt->rowCount() > 0) {
-            // Get user data
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get status from session if not in database
-            $status = $row['status'] ?? ($_SESSION['user_statuses'][$row['id']] ?? 'active');
-            
-            // Check if user is inactive
-            if ($status === 'inactive') {
-                // Set error message
-                $this->error = "Account is inactive. Please contact the administrator.";
-                return false;
-            }
-            
-            // Verify password
-            if (password_verify($password, $row['password'])) {
-                // Set user properties
-                $this->id = $row['id'];
-                $this->uuid = $row['uuid'] ?? null;
-                $this->username = $row['username'];
-                $this->full_name = $row['full_name'];
-                $this->email = $row['email'];
-                $this->role = $row['role'];
-                $this->status = $status;
                 
-                return true;
+                if ($stmt->rowCount() > 0) {
+                    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $status = $row['status'] ?? 'active';
+                    
+                    if ($status === 'inactive') {
+                        $this->error = "Account is inactive. Please contact the administrator.";
+                        return false;
+                    }
+                    
+                    if (password_verify($password, $row['password'])) {
+                        $this->id = $row['id'];
+                        $this->uuid = $row['uuid'] ?? null;
+                        $this->username = $row['username'];
+                        $this->full_name = $row['full_name'];
+                        $this->email = $row['email'];
+                        $this->role = $row['role'];
+                        $this->roles = [$row['role']];
+                        $this->status = $status;
+                        
+                        return true;
+                    }
+                }
+                
+                return false;
+            } catch (PDOException $e2) {
+                error_log("Login error: " . $e2->getMessage());
+                throw $e2;
             }
         }
-        
-        return false;
     }
     
     // Read one user
     public function read_one() {
         try {
-            // First try with all fields including phone_number
-            $query = "SELECT id, uuid, username, full_name, email, password, role, status, phone_number, created_at
-                      FROM " . $this->table_name . " 
-                      WHERE id = ? 
+            $query = "SELECT u.id, u.uuid, u.username, u.email, u.password, u.created_at,
+                             up.full_name, up.display_name, up.status,
+                             GROUP_CONCAT(r.name) as roles
+                      FROM " . $this->table_name . " u
+                      LEFT JOIN user_profiles up ON u.id = up.user_id
+                      LEFT JOIN user_roles ur ON u.id = ur.user_id
+                      LEFT JOIN roles r ON ur.role_id = r.id
+                      WHERE u.id = :id
+                      GROUP BY u.id
                       LIMIT 0,1";
             
-            // Prepare the query
-            $stmt = $this->conn->prepare($query);
-            
-            // Bind ID parameter
-            $stmt->bindParam(1, $this->id);
-            
-            // Execute the query
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":id", $this->id);
             $stmt->execute();
-        } catch (PDOException $e) {
-            // If there's an error with phone_number column, try without it
-            if (strpos($e->getMessage(), "Unknown column 'phone_number'") !== false) {
-                $query = "SELECT id, uuid, username, full_name, email, password, role, status, created_at
-                          FROM " . $this->table_name . " 
-                          WHERE id = ? 
-                          LIMIT 0,1";
+            
+            if ($stmt->rowCount() > 0) {
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
                 
-                // Prepare the query
-                $stmt = $this->conn->prepare($query);
+                // Set properties
+                $this->id = $row['id'];
+                $this->uuid = $row['uuid'];
+                $this->username = $row['username'];
+                $this->email = $row['email'];
+                $this->password = $row['password'];
+                $this->full_name = $row['full_name'];
+                $this->display_name = $row['display_name'];
+                $this->status = $row['status'] ?? 'active';
+                $this->created_at = $row['created_at'];
+                $this->roles = $row['roles'] ? explode(',', $row['roles']) : [];
                 
-                // Bind ID parameter
-                $stmt->bindParam(1, $this->id);
+                // For backward compatibility
+                $this->role = $this->roles[0] ?? 'donor';
                 
-                // Execute the query
-                $stmt->execute();
-            } else {
-                // If it's a different error, rethrow it
-                throw $e;
+                return true;
             }
-        }
-        
-        // Check if record exists
-        if ($stmt->rowCount() > 0) {
-            // Get record data
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            // Set properties
-            $this->id = $row['id'];
-            $this->uuid = $row['uuid'];
-            $this->username = $row['username'];
-            $this->full_name = $row['full_name'];
-            $this->email = $row['email'];
-            $this->password = $row['password'];
-            $this->role = $row['role'];
-            $this->status = $row['status'] ?? 'active';
-            $this->created_at = $row['created_at'];
-            $this->phone_number = $row['phone_number'] ?? null;  // Set phone_number, default to null if not exists
+            return false;
+        } catch (PDOException $e) {
+            // If there's an error with the new schema, try the old schema
+            $query = "SELECT id, uuid, username, full_name, email, password, role, status, created_at
+                      FROM " . $this->table_name . " 
+                      WHERE id = :id 
+                      LIMIT 0,1";
             
-            return true;
+            $stmt = $this->db->prepare($query);
+            $stmt->bindParam(":id", $this->id);
+            $stmt->execute();
+            
+            if ($stmt->rowCount() > 0) {
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // Set properties
+                $this->id = $row['id'];
+                $this->uuid = $row['uuid'];
+                $this->username = $row['username'];
+                $this->full_name = $row['full_name'];
+                $this->email = $row['email'];
+                $this->password = $row['password'];
+                $this->role = $row['role'];
+                $this->status = $row['status'] ?? 'active';
+                $this->created_at = $row['created_at'];
+                $this->roles = [$row['role']];
+                
+                return true;
+            }
+            
+            return false;
         }
-        
-        return false;
     }
     
     // Get all users with optional role filter
     public function read_all($role = null) {
         try {
-            // First try to query with status field
-            $query = "SELECT id, uuid, username, full_name, email, role, status, created_at
+            $query = "SELECT u.id, u.uuid, u.username, u.email, u.created_at,
+                             up.full_name, up.display_name, up.status,
+                             GROUP_CONCAT(r.name) as roles,
+                             COALESCE(GROUP_CONCAT(r.name), 'donor') as role
+                      FROM " . $this->table_name . " u
+                      LEFT JOIN user_profiles up ON u.id = up.user_id
+                      LEFT JOIN user_roles ur ON u.id = ur.user_id
+                      LEFT JOIN roles r ON ur.role_id = r.id";
+            
+            // Add role filter if provided
+            if ($role !== null) {
+                $query .= " WHERE r.name = :role";
+            }
+            
+            $query .= " GROUP BY u.id ORDER BY u.created_at DESC";
+            
+            $stmt = $this->db->prepare($query);
+            
+            // Bind role parameter if provided
+            if ($role !== null) {
+                $stmt->bindParam(':role', $role);
+            }
+            
+            $stmt->execute();
+            return $stmt;
+        } catch (PDOException $e) {
+            // If there's an error with the new schema, try the old schema
+            $query = "SELECT id, uuid, username, email, full_name, 
+                            COALESCE(role, 'donor') as role, 
+                            COALESCE(status, 'active') as status, 
+                            created_at
                       FROM " . $this->table_name;
             
             // Add role filter if provided
@@ -295,94 +376,74 @@ class User {
             
             $query .= " ORDER BY created_at DESC";
             
-            // Prepare the query
-            $stmt = $this->conn->prepare($query);
+            $stmt = $this->db->prepare($query);
             
             // Bind role parameter if provided
             if ($role !== null) {
                 $stmt->bindParam(':role', $role);
             }
             
-            // Execute the query
             $stmt->execute();
-        } catch (PDOException $e) {
-            // If there's an error (like missing column), try without the status field
-            if (strpos($e->getMessage(), "Column not found: 1054 Unknown column 'status'") !== false) {
-                // Query without status field
-                $query = "SELECT id, uuid, username, full_name, email, role, created_at
-                          FROM " . $this->table_name;
-                
-                // Add role filter if provided
-                if ($role !== null) {
-                    $query .= " WHERE role = :role";
-                }
-                
-                $query .= " ORDER BY created_at DESC";
-                
-                // Prepare the query
-                $stmt = $this->conn->prepare($query);
-                
-                // Bind role parameter if provided
-                if ($role !== null) {
-                    $stmt->bindParam(':role', $role);
-                }
-                
-                // Execute the query
-                $stmt->execute();
-            } else {
-                // If it's a different error, rethrow it
-                throw $e;
-            }
+            return $stmt;
         }
-        
-        return $stmt;
     }
     
     // Update user
     public function update() {
-        // Sanitize inputs
-        $this->id = htmlspecialchars(strip_tags($this->id));
-        $this->username = htmlspecialchars(strip_tags($this->username));
-        $this->full_name = htmlspecialchars(strip_tags($this->full_name));
-        $this->email = htmlspecialchars(strip_tags($this->email));
-        $this->role = htmlspecialchars(strip_tags($this->role));
-        
-        // Query to update user
-        $query = "UPDATE " . $this->table_name . " 
-                  SET username = :username,
-                      full_name = :full_name, 
-                      email = :email";
-        
-        // Always update role if it's set - this is the key change
-        $query .= ", role = :role";
-        
-        // Update uuid if it's not set
-        if (empty($this->uuid)) {
-            $this->uuid = $this->generate_uuid();
-            $query .= ", uuid = :uuid";
-        }
-        
-        $query .= " WHERE id = :id";
-        
-        // Prepare the query
-        $stmt = $this->conn->prepare($query);
-        
-        // Bind values
-        $stmt->bindParam(':username', $this->username);
-        $stmt->bindParam(':full_name', $this->full_name);
-        $stmt->bindParam(':email', $this->email);
-        $stmt->bindParam(':role', $this->role);
-        if (empty($this->uuid)) {
-            $stmt->bindParam(':uuid', $this->uuid);
-        }
-        $stmt->bindParam(':id', $this->id);
-        
-        // Execute the query
-        if ($stmt->execute()) {
+        try {
+            $this->db->beginTransaction();
+
+            // Update users table
+            $query = "UPDATE " . $this->table_name . "
+                    SET username = :username,
+                        email = :email
+                    WHERE id = :id";
+            
+            $stmt = $this->db->prepare($query);
+            
+            $stmt->bindParam(":username", $this->username);
+            $stmt->bindParam(":email", $this->email);
+            $stmt->bindParam(":id", $this->id);
+            
+            $stmt->execute();
+
+            // Update user_profiles
+            $query = "UPDATE user_profiles
+                    SET full_name = :full_name,
+                        display_name = :display_name,
+                        status = :status
+                    WHERE user_id = :id";
+            
+            $stmt = $this->db->prepare($query);
+            
+            $stmt->bindParam(":full_name", $this->full_name);
+            $stmt->bindParam(":display_name", $this->display_name);
+            $stmt->bindParam(":status", $this->status);
+            $stmt->bindParam(":id", $this->id);
+            
+            $stmt->execute();
+
+            // Update roles
+            $stmt = $this->db->prepare("DELETE FROM user_roles WHERE user_id = :user_id");
+            $stmt->bindParam(":user_id", $this->id);
+            $stmt->execute();
+
+            foreach ($this->roles as $role_name) {
+                $query = "INSERT INTO user_roles (user_id, role_id)
+                         SELECT :user_id, id FROM roles WHERE name = :role_name";
+                
+                $stmt = $this->db->prepare($query);
+                $stmt->bindParam(":user_id", $this->id);
+                $stmt->bindParam(":role_name", $role_name);
+                $stmt->execute();
+            }
+
+            $this->db->commit();
             return true;
+        } catch(Exception $e) {
+            $this->db->rollBack();
+            throw $e;
         }
-        
-        return false;
     }
     
     // Change password
@@ -399,7 +460,7 @@ class User {
                   WHERE id = :id";
         
         // Prepare the query
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         
         // Bind values
         $stmt->bindParam(':password', $password_hash);
@@ -430,7 +491,7 @@ class User {
                   LIMIT 0,1";
         
         // Prepare the query
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         
         // Bind email parameter
         $stmt->bindParam(1, $email);
@@ -460,7 +521,7 @@ class User {
                           WHERE id = :id";
                 
                 // Prepare the query
-                $stmt = $this->conn->prepare($query);
+                $stmt = $this->db->prepare($query);
                 
                 // Bind values
                 $stmt->bindParam(':token', $token);
@@ -481,7 +542,7 @@ class User {
                                    ADD INDEX idx_reset_token (reset_token),
                                    ADD INDEX idx_reset_token_expiry (reset_token_expiry)";
                     
-                    $alterStmt = $this->conn->prepare($alterQuery);
+                    $alterStmt = $this->db->prepare($alterQuery);
                     
                     if ($alterStmt->execute()) {
                         // Try again with the new columns
@@ -491,7 +552,7 @@ class User {
                                   WHERE id = :id";
                         
                         // Prepare the query
-                        $stmt = $this->conn->prepare($query);
+                        $stmt = $this->db->prepare($query);
                         
                         // Bind values
                         $stmt->bindParam(':token', $token);
@@ -534,7 +595,7 @@ class User {
                   LIMIT 0,1";
         
         // Prepare the query
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         
         // Bind parameters
         $stmt->bindParam(1, $email);
@@ -563,7 +624,7 @@ class User {
         $query = "SELECT status FROM " . $this->table_name . " WHERE id = :id";
         
         // Prepare the query
-        $stmt = $this->conn->prepare($query);
+        $stmt = $this->db->prepare($query);
         
         // Bind ID parameter
         $stmt->bindParam(':id', $this->id);
@@ -598,7 +659,7 @@ class User {
             $query = "UPDATE " . $this->table_name . " SET status = :status WHERE id = :id";
             
             // Prepare the query
-            $stmt = $this->conn->prepare($query);
+            $stmt = $this->db->prepare($query);
             
             // Bind parameters
             $stmt->bindParam(':status', $status);
@@ -616,14 +677,14 @@ class User {
                 $alterQuery = "ALTER TABLE " . $this->table_name . " 
                                ADD COLUMN status ENUM('active', 'inactive') NOT NULL DEFAULT 'active'";
                 
-                $alterStmt = $this->conn->prepare($alterQuery);
+                $alterStmt = $this->db->prepare($alterQuery);
                 
                 if ($alterStmt->execute()) {
                     // Try again with the new column
                     $query = "UPDATE " . $this->table_name . " SET status = :status WHERE id = :id";
                     
                     // Prepare the query
-                    $stmt = $this->conn->prepare($query);
+                    $stmt = $this->db->prepare($query);
                     
                     // Bind parameters
                     $stmt->bindParam(':status', $status);
@@ -662,7 +723,7 @@ class User {
             
             try {
                 // Begin transaction
-                $this->conn->beginTransaction();
+                $this->db->beginTransaction();
                 
                 // Update password
                 $query = "UPDATE " . $this->table_name . " 
@@ -673,7 +734,7 @@ class User {
                           AND reset_token = :token";
                 
                 // Prepare the query
-                $stmt = $this->conn->prepare($query);
+                $stmt = $this->db->prepare($query);
                 
                 // Bind values
                 $stmt->bindParam(':password', $password_hash);
@@ -682,13 +743,13 @@ class User {
                 
                 // Execute the query
                 if ($stmt->execute() && $stmt->rowCount() > 0) {
-                    $this->conn->commit();
+                    $this->db->commit();
                     return true;
                 }
                 
-                $this->conn->rollBack();
+                $this->db->rollBack();
             } catch (PDOException $e) {
-                $this->conn->rollBack();
+                $this->db->rollBack();
                 error_log("Error resetting password: " . $e->getMessage());
             }
         }
@@ -714,7 +775,7 @@ class User {
                       LIMIT 0,1";
             
             // Prepare the query
-            $stmt = $this->conn->prepare($query);
+            $stmt = $this->db->prepare($query);
             
             // Bind UUID parameter
             $stmt->bindParam(1, $uuid);
@@ -731,7 +792,7 @@ class User {
                           LIMIT 0,1";
                 
                 // Prepare the query
-                $stmt = $this->conn->prepare($query);
+                $stmt = $this->db->prepare($query);
                 
                 // Bind UUID parameter
                 $stmt->bindParam(1, $uuid);
@@ -763,6 +824,83 @@ class User {
         }
         
         return false;
+    }
+
+    public function read($id) {
+        $query = "SELECT u.*, up.full_name, up.display_name, up.status,
+                        GROUP_CONCAT(r.name) as roles
+                 FROM " . $this->table_name . " u
+                 LEFT JOIN user_profiles up ON u.id = up.user_id
+                 LEFT JOIN user_roles ur ON u.id = ur.user_id
+                 LEFT JOIN roles r ON ur.role_id = r.id
+                 WHERE u.id = :id
+                 GROUP BY u.id";
+        
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":id", $id);
+        $stmt->execute();
+        
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $this->id = $row['id'];
+            $this->uuid = $row['uuid'];
+            $this->username = $row['username'];
+            $this->email = $row['email'];
+            $this->full_name = $row['full_name'];
+            $this->display_name = $row['display_name'];
+            $this->status = $row['status'];
+            $this->roles = $row['roles'] ? explode(',', $row['roles']) : [];
+            $this->created_at = $row['created_at'];
+            return true;
+        }
+        return false;
+    }
+
+    public function delete() {
+        // With CASCADE constraints, we only need to delete from users table
+        $query = "DELETE FROM " . $this->table_name . " WHERE id = :id";
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":id", $this->id);
+        return $stmt->execute();
+    }
+
+    public function hasRole($role_name) {
+        return in_array($role_name, $this->roles);
+    }
+
+    public function createPasswordReset() {
+        $token = bin2hex(random_bytes(32));
+        $expires = date('Y-m-d H:i:s', strtotime('+24 hours'));
+
+        $query = "INSERT INTO password_resets (user_id, token, expires_at)
+                 VALUES (:user_id, :token, :expires_at)
+                 ON DUPLICATE KEY UPDATE
+                 token = VALUES(token),
+                 expires_at = VALUES(expires_at)";
+        
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":user_id", $this->id);
+        $stmt->bindParam(":token", $token);
+        $stmt->bindParam(":expires_at", $expires);
+        
+        if ($stmt->execute()) {
+            return $token;
+        }
+        return false;
+    }
+
+    public function verifyPasswordReset($token) {
+        $query = "SELECT * FROM password_resets
+                 WHERE user_id = :user_id
+                 AND token = :token
+                 AND expires_at > NOW()";
+        
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(":user_id", $this->id);
+        $stmt->bindParam(":token", $token);
+        $stmt->execute();
+        
+        return $stmt->rowCount() > 0;
     }
 }
 ?>

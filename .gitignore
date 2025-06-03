@@ -31,6 +31,7 @@ yarn-error.log*
 
 # Database backups and configuration
 *.sql
+!database/backups/*.sql
 config/database.php
 config/email_config.php
 config/*_credentials.php

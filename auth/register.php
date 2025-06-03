@@ -17,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $password = $_POST['password'] ?? '';
     $confirmPassword = $_POST['confirm_password'] ?? '';
+    $phoneNumber = $_POST['phone_number'] ?? '';
     
     if (empty($name) || empty($email) || empty($password) || empty($confirmPassword)) {
         $errorMessage = 'Please fill in all fields';
@@ -32,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user->email = $email;
         $user->password = $password;
         $user->role = 'donor'; // Default role is donor
+        $user->phone_number = $phoneNumber;
         
         if ($user->emailExists()) {
             $errorMessage = 'Email already exists';
@@ -93,6 +95,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input id="email" name="email" type="email" autocomplete="email" required 
                                class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm" 
                                placeholder="Email address">
+                    </div>
+                    <div>
+                        <label for="phone_number" class="sr-only">Phone Number</label>
+                        <input id="phone_number" name="phone_number" type="tel" 
+                               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-green-500 focus:border-green-500 focus:z-10 sm:text-sm" 
+                               placeholder="Phone Number (optional)">
                     </div>
                     <div class="relative">
                         <label for="password" class="sr-only">Password</label>

@@ -24,12 +24,27 @@ $donation = new Donation($db);
 // Get donor's donations
 $donations = $donation->read_all($_SESSION['user_id']);
 
-// Get annual donation total for current year
-$current_year = date('Y');
-$annual_total = $donation->get_user_total($_SESSION['user_id'], $current_year);
+// Get total verified donations for all time
+$query = "SELECT SUM(d.amount) as total
+          FROM donations d
+          JOIN donation_status_history dsh ON d.id = dsh.donation_id
+          JOIN donation_statuses ds ON dsh.status_id = ds.id
+          WHERE d.donor_id = :donor_id 
+          AND ds.name = 'verified'
+          AND dsh.id = (
+              SELECT id FROM donation_status_history 
+              WHERE donation_id = d.id 
+              ORDER BY changed_at DESC 
+              LIMIT 1
+          )";
+          
+$stmt = $db->prepare($query);
+$stmt->execute(['donor_id' => $_SESSION['user_id']]);
+$result = $stmt->fetch(PDO::FETCH_ASSOC);
+$total_donations = $result['total'] ?? 0;
 
-// Determine donor tier
-$donor_tier = getDonorTier($annual_total);
+// Determine donor tier based on total verified donations
+$donor_tier = getDonorTier($total_donations);
 $tier_color = getTierColorClass($donor_tier);
 
 // Get next tier threshold
@@ -38,16 +53,33 @@ $next_tier_name = '';
 
 switch ($donor_tier) {
     case 'Blue':
-        $next_tier_amount = BRONZE_TIER_MIN - $annual_total;
+        $next_tier_amount = BRONZE_TIER_MIN - $total_donations;
         $next_tier_name = 'Bronze';
         break;
     case 'Bronze':
-        $next_tier_amount = SILVER_TIER_MIN - $annual_total;
+        $next_tier_amount = SILVER_TIER_MIN - $total_donations;
         $next_tier_name = 'Silver';
         break;
     case 'Silver':
-        $next_tier_amount = GOLD_TIER_MIN - $annual_total;
+        $next_tier_amount = GOLD_TIER_MIN - $total_donations;
         $next_tier_name = 'Gold';
+        break;
+}
+
+// Calculate progress percentage for progress bar
+$progress = 0;
+switch ($donor_tier) {
+    case 'Blue':
+        $progress = ($total_donations / BRONZE_TIER_MIN) * 100;
+        break;
+    case 'Bronze':
+        $progress = (($total_donations - BRONZE_TIER_MIN) / (SILVER_TIER_MIN - BRONZE_TIER_MIN)) * 100;
+        break;
+    case 'Silver':
+        $progress = (($total_donations - SILVER_TIER_MIN) / (GOLD_TIER_MIN - SILVER_TIER_MIN)) * 100;
+        break;
+    case 'Gold':
+        $progress = 100;
         break;
 }
 ?>
@@ -128,7 +160,7 @@ switch ($donor_tier) {
                 <div class="ml-4">
                     <h3 class="text-lg font-semibold text-gray-700"><?php echo $donor_tier; ?> Tier Donor</h3>
                     <p class="text-sm text-gray-500">
-                        Annual Contribution: <?php echo formatPeso($annual_total); ?>
+                        Total Contribution: <?php echo formatPeso($total_donations); ?>
                     </p>
                 </div>
             </div>
@@ -139,20 +171,6 @@ switch ($donor_tier) {
                     Donate <?php echo formatPeso($next_tier_amount); ?> more to reach <?php echo $next_tier_name; ?> Tier
                 </h4>
                 <div class="w-full bg-gray-200 rounded-full h-2.5">
-                    <?php 
-                    $progress = 0;
-                    switch ($donor_tier) {
-                        case 'Blue':
-                            $progress = ($annual_total / BRONZE_TIER_MIN) * 100;
-                            break;
-                        case 'Bronze':
-                            $progress = (($annual_total - BRONZE_TIER_MIN) / (SILVER_TIER_MIN - BRONZE_TIER_MIN)) * 100;
-                            break;
-                        case 'Silver':
-                            $progress = (($annual_total - SILVER_TIER_MIN) / (GOLD_TIER_MIN - SILVER_TIER_MIN)) * 100;
-                            break;
-                    }
-                    ?>
                     <div class="bg-green-600 h-2.5 rounded-full" style="width: <?php echo min(100, $progress); ?>%"></div>
                 </div>
             </div>

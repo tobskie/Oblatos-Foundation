@@ -43,6 +43,7 @@ class User {
     public $phone_number;  // Added phone_number property
     public $display_name;
     public $roles = [];
+    public $error;
         
     
     // Constructor with database connection
@@ -93,15 +94,16 @@ class User {
 
             // Insert into user_profiles
             $query = "INSERT INTO user_profiles
-                    (user_id, full_name, display_name, status)
+                    (user_id, full_name, display_name, phone_number, status)
                     VALUES
-                    (:user_id, :full_name, :display_name, :status)";
+                    (:user_id, :full_name, :display_name, :phone_number, :status)";
             
             $stmt = $this->db->prepare($query);
             
             $stmt->bindParam(":user_id", $this->id);
             $stmt->bindParam(":full_name", $this->full_name);
             $stmt->bindParam(":display_name", $this->display_name);
+            $stmt->bindParam(":phone_number", $this->phone_number);
             $stmt->bindParam(":status", $this->status);
             
             $stmt->execute();
@@ -411,6 +413,7 @@ class User {
             $query = "UPDATE user_profiles
                     SET full_name = :full_name,
                         display_name = :display_name,
+                        phone_number = :phone_number,
                         status = :status
                     WHERE user_id = :id";
             
@@ -418,6 +421,7 @@ class User {
             
             $stmt->bindParam(":full_name", $this->full_name);
             $stmt->bindParam(":display_name", $this->display_name);
+            $stmt->bindParam(":phone_number", $this->phone_number);
             $stmt->bindParam(":status", $this->status);
             $stmt->bindParam(":id", $this->id);
             

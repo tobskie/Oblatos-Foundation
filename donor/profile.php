@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     // Set user properties
     $user->full_name = htmlspecialchars(strip_tags($_POST['full_name']));
     $user->email = htmlspecialchars(strip_tags($_POST['email']));
+    $user->phone_number = htmlspecialchars(strip_tags($_POST['phone_number']));
     
     // Update user
     if ($user->update()) {
@@ -110,6 +111,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                                             <input type="email" name="email" id="email" 
                                                 class="mt-1 focus:ring-green-500 focus:border-green-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" 
                                                 value="<?php echo htmlspecialchars($user->email); ?>" required>
+                                        </div>
+                                        
+                                        <div class="mb-4">
+                                            <label for="phone_number" class="block text-sm font-medium text-gray-700">Phone Number</label>
+                                            <input type="tel" name="phone_number" id="phone_number" 
+                                                class="mt-1 focus:ring-green-500 focus:border-green-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" 
+                                                value="<?php echo htmlspecialchars($user->phone_number ?? ''); ?>" 
+                                                placeholder="Enter your phone number">
+                                            <p class="mt-1 text-sm text-gray-500">This will help us contact you if needed.</p>
                                         </div>
                                         
                                         <div class="mb-4">

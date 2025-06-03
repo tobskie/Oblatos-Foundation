@@ -9,13 +9,13 @@ define('UPLOAD_DIR', 'uploads/');
 define('RECEIPTS_DIR', UPLOAD_DIR . 'receipts/');
 
 // Define donation tiers with PHP Peso amounts (monthly)
-define('BLUE_TIER_MIN', 100);    // ₱100 - ₱990 monthly
-define('BLUE_TIER_MAX', 990);
-define('BRONZE_TIER_MIN', 1000);  // ₱1,000 - ₱4,990 monthly
-define('BRONZE_TIER_MAX', 4990);
-define('SILVER_TIER_MIN', 5000);  // ₱5,000 - ₱9,990 monthly
-define('SILVER_TIER_MAX', 9990);
-define('GOLD_TIER_MIN', 10000);   // ₱10,000+ monthly
+define('BLUE_TIER_MIN', 100);
+define('BLUE_TIER_MAX', 999);
+define('BRONZE_TIER_MIN', 1000);
+define('BRONZE_TIER_MAX', 4999);
+define('SILVER_TIER_MIN', 5000);
+define('SILVER_TIER_MAX', 9999);
+define('GOLD_TIER_MIN', 10000);
 
 // Error reporting (set to 0 in production)
 error_reporting(E_ALL);
@@ -67,15 +67,15 @@ function generateRandomString($length = 10) {
     return $randomString;
 }
 
-// Function to get donor tier based on monthly donation amount
-function getDonorTier($monthlyAmount) {
-    if ($monthlyAmount >= GOLD_TIER_MIN) {
+// Function to get donor tier based on total donation amount
+function getDonorTier($totalAmount) {
+    if ($totalAmount >= GOLD_TIER_MIN) {
         return 'Gold';
-    } else if ($monthlyAmount >= SILVER_TIER_MIN) {
+    } else if ($totalAmount >= SILVER_TIER_MIN) {
         return 'Silver';
-    } else if ($monthlyAmount >= BRONZE_TIER_MIN) {
+    } else if ($totalAmount >= BRONZE_TIER_MIN) {
         return 'Bronze';
-    } else if ($monthlyAmount >= BLUE_TIER_MIN) {
+    } else if ($totalAmount >= BLUE_TIER_MIN) {
         return 'Blue';
     } else {
         return 'New Donor';
@@ -118,15 +118,15 @@ function getTierColor($tier) {
 function getTierDescription($tier) {
     switch ($tier) {
         case 'Gold':
-            return '₱10,000 and above monthly';
+            return '₱10,000 and above total donations';
         case 'Silver':
-            return '₱5,000 - ₱9,990 monthly';
+            return '₱5,000 - ₱9,990 total donations';
         case 'Bronze':
-            return '₱1,000 - ₱4,990 monthly';
+            return '₱1,000 - ₱4,990 total donations';
         case 'Blue':
-            return '₱100 - ₱990 monthly';
+            return '₱100 - ₱990 total donations';
         default:
-            return 'Less than ₱100 monthly';
+            return 'Less than ₱100 total donations';
     }
 }
 ?>

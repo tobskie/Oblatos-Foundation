@@ -253,7 +253,7 @@ unset($_SESSION['error_message']);
                             <?php echo $row['reference_number']; ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <a href="view_donation.php?id=<?php echo $row['id']; ?>" class="text-green-600 hover:text-green-900 mr-3">View & Verify</a>
+                            <a href="verify_donation.php?id=<?php echo $row['id']; ?>" class="text-green-600 hover:text-green-900 mr-3">View & Verify</a>
                         </td>
                     </tr>
                     <?php
@@ -309,7 +309,7 @@ unset($_SESSION['error_message']);
                 <tbody class="bg-white divide-y divide-gray-200">
                     <?php
                     // Get recently verified donations
-                    $recent_verified = $donation->read_all(null, 'verified', date('Y-m-d', strtotime('-30 days')));
+                    $recent_verified = $donation->get_verified_donations();
                     
                     if ($recent_verified->rowCount() > 0) {
                         while ($row = $recent_verified->fetch(PDO::FETCH_ASSOC)) {
@@ -326,7 +326,7 @@ unset($_SESSION['error_message']);
                             <?php echo date('M d, Y', strtotime($row['verified_at'] ?? $row['created_at'])); ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900"><?php echo $row['donor_name']; ?></div>
+                            <div class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($row['full_name']); ?></div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             <?php echo formatPeso($row['amount']); ?>
@@ -337,7 +337,7 @@ unset($_SESSION['error_message']);
                             </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <?php echo $row['verifier_name']; ?>
+                            <?php echo htmlspecialchars($row['verifier_name'] ?? ''); ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <a href="view_donation.php?id=<?php echo $row['id']; ?>" class="text-green-600 hover:text-green-900">View Details</a>

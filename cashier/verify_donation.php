@@ -34,62 +34,49 @@ if (!$donation->read_one() || $donation->status !== 'pending') {
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $status = $_POST['status'] ?? '';
-    
-    if (empty($status) || !in_array($status, ['verified', 'rejected'])) {
-        $_SESSION['error_message'] = 'Please select a valid status';
-        redirect('cashier/verify_donation.php?id=' . $donation_id);
-    }
-    
-    // Update donation
-    $donation->status = $status;
-    $donation->verified_by = $_SESSION['user_id'];
-    
-    if ($donation->verify()) {
-        // Get cashier name for the email
-        $user = new User($db);
-        $user->id = $_SESSION['user_id'];
-        $user->read_one();
-        $cashier_name = $user->full_name;
+    if (isset($_POST['status'])) {
+        $status = $_POST['status'];
+        $notes = $_POST['notes'] ?? '';
         
-        // Format date for email
-        $donation_date = date('F d, Y', strtotime($donation->created_at));
-        
-        // Send email notification to donor
-        $email_sent = Mailer::sendDonationStatusEmail(
-            $donation->donor_email,
-            $donation->donor_name,
-            $donation->id,
-            $donation->amount,
-            $donation_date,
-            $status,
-            $cashier_name
-        );
-        
-        $email_message = $email_sent ? 'Email notification sent to donor.' : 'Failed to send email notification.';
-        
-        if ($status === 'verified') {
-            $_SESSION['success_message'] = '<div class="verification-success">
-                <h3><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg> Donation Successfully Verified!</h3>
-                <p>Donation #' . $donation->id . ' from ' . $donation->donor_name . ' for ' . formatPeso($donation->amount) . ' has been verified.</p>
-                <p class="email-status">' . $email_message . ' The donor has been notified of this verification.</p>
-                <p>This donation will now appear in the admin\'s verified donations list.</p>
-            </div>';
+        // Update donation status
+        if ($donation->update_status($donation_id, $status, $_SESSION['user_id'], $notes)) {
+            // Send email notification to donor
+            try {
+                $mailer = new Mailer();
+                $subject = $status === 'verified' ? 'Donation Verified' : 'Donation Rejected';
+                $message = $status === 'verified' 
+                    ? "Your donation of ₱" . number_format($donation->amount, 2) . " has been verified. Thank you for your generosity!"
+                    : "Your donation of ₱" . number_format($donation->amount, 2) . " has been rejected. Reason: " . $notes;
+                
+                $email_sent = Mailer::send($donation->donor_email, $subject, $message);
+                $email_message = $email_sent ? "Email notification sent successfully." : "Failed to send email notification.";
+            } catch (Exception $e) {
+                $email_message = "Failed to send email notification: " . $e->getMessage();
+            }
+            
+            if ($status === 'verified') {
+                $_SESSION['success_message'] = '<div class="verification-success">
+                    <h3><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg> Donation Successfully Verified!</h3>
+                    <p>Donation #' . $donation->id . ' from ' . $donation->donor_name . ' for ₱' . number_format($donation->amount, 2) . ' has been verified.</p>
+                    <p class="email-status">' . $email_message . ' The donor has been notified of this verification.</p>
+                    <p>This donation will now appear in the verified donations list.</p>
+                </div>';
+            } else {
+                $_SESSION['success_message'] = '<div class="verification-rejected">
+                    <h3><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg> Donation Rejected</h3>
+                    <p>Donation #' . $donation->id . ' from ' . $donation->donor_name . ' for ₱' . number_format($donation->amount, 2) . ' has been rejected.</p>
+                    <p class="email-status">' . $email_message . ' The donor has been notified of this rejection.</p>
+                </div>';
+            }
+            redirect('cashier/dashboard.php');
         } else {
-            $_SESSION['success_message'] = '<div class="verification-rejected">
-                <h3><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg> Donation Rejected</h3>
-                <p>Donation #' . $donation->id . ' from ' . $donation->donor_name . ' for ' . formatPeso($donation->amount) . ' has been rejected.</p>
-                <p class="email-status">' . $email_message . ' The donor has been notified of this rejection.</p>
-            </div>';
+            $_SESSION['error_message'] = 'Failed to update donation status';
+            redirect('cashier/verify_donation.php?id=' . $donation_id);
         }
-        redirect('cashier/dashboard.php');
-    } else {
-        $_SESSION['error_message'] = 'Failed to update donation status';
-        redirect('cashier/verify_donation.php?id=' . $donation_id);
     }
 }
 ?>
@@ -117,64 +104,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div>
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Donation Information</h3>
                     
-                    <div class="grid grid-cols-2 gap-4 mb-6">
-                        <div>
-                            <p class="text-sm font-medium text-gray-500">Amount</p>
-                            <p class="mt-1 text-lg font-semibold text-gray-900"><?php echo formatPeso($donation->amount); ?></p>
-                        </div>
-                        <div>
-                            <p class="text-sm font-medium text-gray-500">Date</p>
-                            <p class="mt-1 text-gray-900"><?php echo date('M d, Y', strtotime($donation->created_at)); ?></p>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-6">
-                        <p class="text-sm font-medium text-gray-500">Donor</p>
-                        <p class="mt-1 text-gray-900"><?php echo $donation->donor_name; ?></p>
-                    </div>
-                    
-                    <div class="mb-6">
-                        <p class="text-sm font-medium text-gray-500">Payment Method</p>
-                        <p class="mt-1 text-gray-900">
-                            <?php echo $donation->payment_method === 'bank_transfer' ? 'Bank Transfer' : 'GCash'; ?>
-                        </p>
-                    </div>
-                    
-                    <div class="mb-6">
-                        <p class="text-sm font-medium text-gray-500">Reference Number</p>
-                        <p class="mt-1 text-gray-900"><?php echo $donation->reference_number; ?></p>
-                    </div>
-                    
-                    <form action="verify_donation.php?id=<?php echo $donation_id; ?>" method="post" class="mt-8">
-                        <div class="mb-6">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Verification Action</label>
-                            <div class="flex items-center space-x-4">
-                                <label class="inline-flex items-center">
-                                    <input type="radio" name="status" value="verified" class="form-radio h-5 w-5 text-green-600">
-                                    <span class="ml-2 text-gray-700">Verify Donation</span>
-                                </label>
-                                <label class="inline-flex items-center">
-                                    <input type="radio" name="status" value="rejected" class="form-radio h-5 w-5 text-red-600">
-                                    <span class="ml-2 text-gray-700">Reject Donation</span>
-                                </label>
+                    <div class="border-t border-gray-200">
+                        <dl>
+                            <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                <dt class="text-sm font-medium text-gray-500">
+                                    Donor Name
+                                </dt>
+                                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <?php echo htmlspecialchars($donation->donor_name); ?>
+                                </dd>
                             </div>
+                            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                <dt class="text-sm font-medium text-gray-500">
+                                    Amount
+                                </dt>
+                                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    ₱<?php echo number_format($donation->amount, 2); ?>
+                                </dd>
+                            </div>
+                            <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                <dt class="text-sm font-medium text-gray-500">
+                                    Payment Method
+                                </dt>
+                                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <?php echo ucfirst(str_replace('_', ' ', $donation->payment_method)); ?>
+                                </dd>
+                            </div>
+                            <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                <dt class="text-sm font-medium text-gray-500">
+                                    Reference Number
+                                </dt>
+                                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <?php echo htmlspecialchars($donation->reference_number); ?>
+                                </dd>
+                            </div>
+                            <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                <dt class="text-sm font-medium text-gray-500">
+                                    Date Created
+                                </dt>
+                                <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <?php echo date('M d, Y h:i A', strtotime($donation->created_at)); ?>
+                                </dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <?php if ($donation->payment_proof): ?>
+                    <div class="border-t border-gray-200 px-4 py-5">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Payment Receipt</h3>
+                        <div class="mt-2">
+                            <img src="../uploads/receipts/<?php echo htmlspecialchars($donation->payment_proof); ?>" 
+                                 alt="Payment Receipt" 
+                                 class="max-w-2xl rounded-lg shadow-lg">
                         </div>
-                        
-                        <div class="flex space-x-4">
-                            <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
-                                Submit Verification
-                            </button>
-                            <a href="dashboard.php" class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out">
-                                Cancel
-                            </a>
-                            <a href="send_email.php?donor_id=<?php echo $donation->donor_id; ?>" class="inline-flex justify-center py-2 px-4 border border-blue-300 shadow-sm text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
-                                Send Custom Email
-                            </a>
-                        </div>
-                    </form>
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="border-t border-gray-200 px-4 py-5">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Verification Action</h3>
+                        <form method="POST" class="space-y-6">
+                            <div class="space-y-4">
+                                <div class="flex items-center space-x-6">
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="status" value="verified" class="form-radio h-5 w-5 text-green-600" required>
+                                        <span class="ml-2 text-gray-700">Verify Donation</span>
+                                    </label>
+                                    <label class="inline-flex items-center">
+                                        <input type="radio" name="status" value="rejected" class="form-radio h-5 w-5 text-red-600">
+                                        <span class="ml-2 text-gray-700">Reject Donation</span>
+                                    </label>
+                                </div>
+                                
+                                <div>
+                                    <label for="notes" class="block text-sm font-medium text-gray-700">Notes (required for rejection)</label>
+                                    <div class="mt-1">
+                                        <textarea id="notes" name="notes" rows="3" 
+                                                class="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"></textarea>
+                                    </div>
+                                    <p class="mt-2 text-sm text-gray-500">
+                                        Please provide a reason if rejecting the donation. This will be included in the notification to the donor.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end space-x-3">
+                                <a href="dashboard.php" 
+                                   class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                                    Cancel
+                                </a>
+                                <button type="submit" 
+                                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                                    Submit Verification
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
                 
                 <div>
@@ -216,6 +240,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const notesField = document.getElementById('notes');
+    const statusRadios = document.querySelectorAll('input[name="status"]');
+
+    // Function to validate form
+    function validateForm(e) {
+        const selectedStatus = document.querySelector('input[name="status"]:checked');
+        
+        if (!selectedStatus) {
+            alert('Please select a verification action (Verify or Reject)');
+            e.preventDefault();
+            return false;
+        }
+
+        if (selectedStatus.value === 'rejected' && !notesField.value.trim()) {
+            alert('Please provide a reason for rejecting the donation');
+            notesField.focus();
+            e.preventDefault();
+            return false;
+        }
+
+        // Confirm action
+        const action = selectedStatus.value === 'verified' ? 'verify' : 'reject';
+        if (!confirm(`Are you sure you want to ${action} this donation?`)) {
+            e.preventDefault();
+            return false;
+        }
+
+        return true;
+    }
+
+    // Add form validation
+    form.addEventListener('submit', validateForm);
+
+    // Show/hide notes field based on selected status
+    statusRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            const notesContainer = notesField.closest('div').parentElement;
+            if (this.value === 'rejected') {
+                notesContainer.style.display = 'block';
+                notesField.setAttribute('required', 'required');
+            } else {
+                notesContainer.style.display = 'none';
+                notesField.removeAttribute('required');
+            }
+        });
+    });
+});
+</script>
 
 <?php
 // Include footer

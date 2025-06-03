@@ -99,7 +99,7 @@ class Donation {
                          u.email as donor_email,
                          up.full_name as donor_name,
                          vup.full_name as verifier_name
-                  FROM " . $this->table_name . " d
+              FROM " . $this->table_name . " d
                   JOIN payment_methods pm ON d.payment_method_id = pm.id
                   LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
                   LEFT JOIN (
@@ -110,7 +110,7 @@ class Donation {
                   LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
                       AND latest.latest_status = dsh.changed_at
                   LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
-                  LEFT JOIN users u ON d.donor_id = u.id
+              LEFT JOIN users u ON d.donor_id = u.id
                   LEFT JOIN user_profiles up ON u.id = up.user_id
                   LEFT JOIN users vu ON dsh.changed_by = vu.id
                   LEFT JOIN user_profiles vup ON vu.id = vup.user_id
@@ -120,7 +120,7 @@ class Donation {
         $stmt->bindParam(":id", $this->id);
         $stmt->execute();
         
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) {
             $this->id = $row['id'];
             $this->donor_id = $row['donor_id'];
@@ -152,7 +152,7 @@ class Donation {
                          dsh.changed_at as verified_at,
                          up.full_name as donor_name,
                          vup.full_name as verifier_name
-                  FROM " . $this->table_name . " d
+                 FROM " . $this->table_name . " d
                   JOIN payment_methods pm ON d.payment_method_id = pm.id
                   LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
                   LEFT JOIN (
@@ -163,7 +163,7 @@ class Donation {
                   LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
                       AND latest.latest_status = dsh.changed_at
                   LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
-                  LEFT JOIN users u ON d.donor_id = u.id
+                 LEFT JOIN users u ON d.donor_id = u.id
                   LEFT JOIN user_profiles up ON u.id = up.user_id
                   LEFT JOIN users vu ON dsh.changed_by = vu.id
                   LEFT JOIN user_profiles vup ON vu.id = vup.user_id";
@@ -223,7 +223,7 @@ class Donation {
             // Try legacy update method as fallback
             try {
                 return $this->update();
-            } catch (PDOException $e2) {
+                } catch (PDOException $e2) {
                 error_log("Error in verify donation fallback: " . $e2->getMessage());
                 return false;
             }
@@ -233,7 +233,7 @@ class Donation {
     // Get total donations by user
     public function get_user_total($user_id, $year = null) {
         try {
-            // Debug: Get all donations for this user first
+        // Debug: Get all donations for this user first
             $debug_query = "SELECT d.amount, ds.name as status, d.created_at, YEAR(d.created_at) as donation_year 
                            FROM " . $this->table_name . " d
                            LEFT JOIN (
@@ -247,19 +247,19 @@ class Donation {
                            WHERE d.donor_id = :donor_id";
             
             $debug_stmt = $this->db->prepare($debug_query);
-            $debug_stmt->bindParam(':donor_id', $user_id);
-            $debug_stmt->execute();
-            
-            error_log("=== Donations for user $user_id ===");
-            while ($debug_row = $debug_stmt->fetch(PDO::FETCH_ASSOC)) {
-                error_log("Amount: " . $debug_row['amount'] . 
-                         ", Status: " . $debug_row['status'] . 
-                         ", Year: " . $debug_row['donation_year'] . 
-                         ", Date: " . $debug_row['created_at']);
-            }
-            error_log("================================");
+        $debug_stmt->bindParam(':donor_id', $user_id);
+        $debug_stmt->execute();
+        
+        error_log("=== Donations for user $user_id ===");
+        while ($debug_row = $debug_stmt->fetch(PDO::FETCH_ASSOC)) {
+            error_log("Amount: " . $debug_row['amount'] . 
+                     ", Status: " . $debug_row['status'] . 
+                     ", Year: " . $debug_row['donation_year'] . 
+                     ", Date: " . $debug_row['created_at']);
+        }
+        error_log("================================");
 
-            // Query to get total donations by user with year and status filters
+        // Query to get total donations by user with year and status filters
             $query = "SELECT COALESCE(SUM(d.amount), 0) as total
                      FROM " . $this->table_name . " d
                      LEFT JOIN (
@@ -272,39 +272,39 @@ class Donation {
                      LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
                      WHERE d.donor_id = :donor_id
                      AND ds.name = 'verified'";
-            
-            // Add year filter if specified
-            if ($year !== null) {
+        
+        // Add year filter if specified
+        if ($year !== null) {
                 $query .= " AND YEAR(d.created_at) = :year";
-            }
+        }
 
-            // Debug: Log the query and parameters
-            error_log("Donation Query: " . $query);
-            error_log("User ID: " . $user_id);
-            if ($year !== null) {
-                error_log("Year: " . $year);
-            }
-            
-            // Prepare the query
+        // Debug: Log the query and parameters
+        error_log("Donation Query: " . $query);
+        error_log("User ID: " . $user_id);
+        if ($year !== null) {
+            error_log("Year: " . $year);
+        }
+        
+        // Prepare the query
             $stmt = $this->db->prepare($query);
-            
-            // Bind donor_id parameter
-            $stmt->bindParam(':donor_id', $user_id);
-            
-            // Bind year parameter if specified
-            if ($year !== null) {
-                $stmt->bindParam(':year', $year);
-            }
-            
-            // Execute the query
-            $stmt->execute();
-            
-            // Get total
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Debug: Log the result
-            error_log("Total amount: " . ($row['total'] ?: 0));
-            
+        
+        // Bind donor_id parameter
+        $stmt->bindParam(':donor_id', $user_id);
+        
+        // Bind year parameter if specified
+        if ($year !== null) {
+            $stmt->bindParam(':year', $year);
+        }
+        
+        // Execute the query
+        $stmt->execute();
+        
+        // Get total
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Debug: Log the result
+        error_log("Total amount: " . ($row['total'] ?: 0));
+        
             return floatval($row['total']);
         } catch (PDOException $e) {
             // Log the error
@@ -451,7 +451,7 @@ class Donation {
             $query = "SELECT d.id, d.donor_id, d.amount, pm.name as payment_method, 
                             d.reference_number, dr.payment_proof, ds.name as status, 
                             d.created_at, up.full_name as donor_name, u.email
-                     FROM " . $this->table_name . " d
+                  FROM " . $this->table_name . " d
                      LEFT JOIN payment_methods pm ON d.payment_method_id = pm.id
                      LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
                      LEFT JOIN (
@@ -462,10 +462,10 @@ class Donation {
                      LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
                          AND latest.latest_status = dsh.changed_at
                      LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
-                     LEFT JOIN users u ON d.donor_id = u.id
+                  LEFT JOIN users u ON d.donor_id = u.id
                      LEFT JOIN user_profiles up ON u.id = up.user_id
                      WHERE ds.name = 'pending' OR ds.name IS NULL
-                     ORDER BY d.created_at DESC";
+                  ORDER BY d.created_at DESC";
             
             // Prepare and execute
             $stmt = $this->db->prepare($query);
@@ -480,12 +480,12 @@ class Donation {
                 $query = "SELECT d.id, d.donor_id, d.amount, d.payment_method_id, 
                                 d.reference_number, dr.payment_proof, 'pending' as status,
                                 d.created_at, up.full_name as donor_name, u.email
-                         FROM " . $this->table_name . " d
+                      FROM " . $this->table_name . " d
                          LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
-                         LEFT JOIN users u ON d.donor_id = u.id
+                      LEFT JOIN users u ON d.donor_id = u.id
                          LEFT JOIN user_profiles up ON u.id = up.user_id
-                         ORDER BY d.created_at DESC";
-                
+                      ORDER BY d.created_at DESC";
+                    
                 $stmt = $this->db->prepare($query);
                 $stmt->execute();
                 
@@ -501,28 +501,39 @@ class Donation {
     public function get_verified_donations() {
         try {
             // Query using the normalized schema
-            $query = "SELECT d.id, d.donor_id, d.amount, pm.name as payment_method,
-                            d.reference_number, dr.payment_proof, ds.name as status,
-                            dsh.changed_at as verified_at, dsh.changed_by as verified_by,
-                            d.created_at, up.full_name, u.email,
-                            up_verifier.full_name as verifier_name
-                     FROM " . $this->table_name . " d
-                     LEFT JOIN payment_methods pm ON d.payment_method_id = pm.id
-                     LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
-                     LEFT JOIN (
-                         SELECT donation_id, MAX(changed_at) as latest_status
-                         FROM donation_status_history
-                         GROUP BY donation_id
-                     ) latest ON d.id = latest.donation_id
-                     LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
-                         AND latest.latest_status = dsh.changed_at
-                     LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
-                     LEFT JOIN users u ON d.donor_id = u.id
-                     LEFT JOIN user_profiles up ON u.id = up.user_id
-                     LEFT JOIN users verifier ON dsh.changed_by = verifier.id
-                     LEFT JOIN user_profiles up_verifier ON verifier.id = up_verifier.user_id
-                     WHERE ds.name = 'verified'
-                     ORDER BY d.created_at DESC";
+            $query = "SELECT 
+                        d.id, 
+                        d.donor_id, 
+                        d.amount, 
+                        pm.name as payment_method,
+                        d.reference_number, 
+                        dr.payment_proof, 
+                        ds.name as status,
+                        dsh.changed_at as verified_at, 
+                        dsh.changed_by as verified_by,
+                        d.created_at, 
+                        up.full_name,
+                        u.email,
+                        vp.full_name as verifier_name,
+                        dsh.notes
+                  FROM " . $this->table_name . " d
+                    JOIN payment_methods pm ON d.payment_method_id = pm.id
+                    LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
+                    LEFT JOIN (
+                        SELECT donation_id, MAX(changed_at) as latest_status
+                        FROM donation_status_history
+                        GROUP BY donation_id
+                    ) latest ON d.id = latest.donation_id
+                    LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
+                        AND latest.latest_status = dsh.changed_at
+                    LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
+                  LEFT JOIN users u ON d.donor_id = u.id
+                    LEFT JOIN user_profiles up ON u.id = up.user_id
+                    LEFT JOIN users v ON dsh.changed_by = v.id
+                    LEFT JOIN user_profiles vp ON v.id = vp.user_id
+                    WHERE ds.name = 'verified'
+                    ORDER BY dsh.changed_at DESC
+                    LIMIT 30";
             
             // Prepare and execute
             $stmt = $this->db->prepare($query);
@@ -531,26 +542,7 @@ class Donation {
             return $stmt;
         } catch (PDOException $e) {
             error_log("Error in get_verified_donations: " . $e->getMessage());
-            
-            // Try a simpler query that might work with older schema
-            try {
-                $query = "SELECT d.id, d.donor_id, d.amount, d.payment_method_id,
-                                d.reference_number, dr.payment_proof, 'verified' as status,
-                                d.created_at, up.full_name, u.email
-                         FROM " . $this->table_name . " d
-                         LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
-                         LEFT JOIN users u ON d.donor_id = u.id
-                         LEFT JOIN user_profiles up ON u.id = up.user_id
-                         ORDER BY d.created_at DESC";
-                
-                $stmt = $this->db->prepare($query);
-                $stmt->execute();
-                
-                return $stmt;
-            } catch (PDOException $e2) {
-                error_log("Error in get_verified_donations fallback: " . $e2->getMessage());
-                throw $e2;
-            }
+            throw $e;
         }
     }
     
@@ -593,8 +585,8 @@ class Donation {
             error_log("Error getting donation statistics: " . $e->getMessage());
             
             // Try a simpler query if the complex one fails
-            $query = "SELECT 
-                        COUNT(*) as total_donations,
+        $query = "SELECT 
+                    COUNT(*) as total_donations,
                         COALESCE(SUM(amount), 0) as total_amount,
                         COALESCE(AVG(amount), 0) as average_amount,
                         COALESCE(MIN(amount), 0) as minimum_amount,
@@ -610,9 +602,9 @@ class Donation {
             }
             
             $stmt = $this->db->prepare($query);
-            $stmt->execute();
-            
-            return $stmt;
+        $stmt->execute();
+        
+        return $stmt;
         }
     }
     
@@ -795,10 +787,10 @@ class Donation {
     // Get total monthly donations for a user
     public function get_user_monthly_total($user_id) {
         try {
-            // Get the current month and year
-            $current_month = date('m');
-            $current_year = date('Y');
-            
+        // Get the current month and year
+        $current_month = date('m');
+        $current_year = date('Y');
+        
             // Query using the normalized schema
             $query = "SELECT COALESCE(SUM(d.amount), 0) as total
                      FROM " . $this->table_name . " d
@@ -814,22 +806,23 @@ class Donation {
                      AND ds.name = 'verified'
                      AND MONTH(d.created_at) = :month
                      AND YEAR(d.created_at) = :year";
-            
-            // Prepare the query
+        
+        // Prepare the query
             $stmt = $this->db->prepare($query);
+        
+        // Bind parameters
+        $stmt->bindParam(':donor_id', $user_id);
+        $stmt->bindParam(':month', $current_month);
+        $stmt->bindParam(':year', $current_year);
+        
+        // Execute the query
+        $stmt->execute();
+        
+        // Get total
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return floatval($row['total']);
             
-            // Bind parameters
-            $stmt->bindParam(':donor_id', $user_id);
-            $stmt->bindParam(':month', $current_month);
-            $stmt->bindParam(':year', $current_year);
-            
-            // Execute the query
-            $stmt->execute();
-            
-            // Get total
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            return floatval($row['total']);
         } catch (PDOException $e) {
             error_log("Error in get_user_monthly_total: " . $e->getMessage());
             
@@ -839,7 +832,8 @@ class Donation {
                          FROM " . $this->table_name . " 
                          WHERE donor_id = :donor_id
                          AND MONTH(created_at) = :month
-                         AND YEAR(created_at) = :year";
+                         AND YEAR(created_at) = :year
+                         AND status = 'verified'";
                 
                 $stmt = $this->db->prepare($query);
                 $stmt->bindParam(':donor_id', $user_id);
@@ -853,6 +847,72 @@ class Donation {
                 error_log("Error in get_user_monthly_total fallback: " . $e2->getMessage());
                 return 0; // Return 0 if all queries fail
             }
+        }
+    }
+
+    public function update_status($donation_id, $status, $changed_by, $notes = '') {
+        try {
+            $this->db->beginTransaction();
+            
+            // Get the status ID
+            $status_query = "SELECT id FROM donation_statuses WHERE name = :name";
+            $status_stmt = $this->db->prepare($status_query);
+            $status_stmt->execute(['name' => $status]);
+            $status_id = $status_stmt->fetchColumn();
+            
+            if (!$status_id) {
+                throw new Exception("Invalid status: " . $status);
+            }
+            
+            // Insert into status history
+            $query = "INSERT INTO donation_status_history 
+                    (donation_id, status_id, changed_by, notes)
+                    VALUES (:donation_id, :status_id, :changed_by, :notes)";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute([
+                'donation_id' => $donation_id,
+                'status_id' => $status_id,
+                'changed_by' => $changed_by,
+                'notes' => $notes
+            ]);
+            
+            // Get donor ID for notification
+            $donor_query = "SELECT donor_id, amount FROM donations WHERE id = :id";
+            $donor_stmt = $this->db->prepare($donor_query);
+            $donor_stmt->execute(['id' => $donation_id]);
+            $donation = $donor_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($donation) {
+                // Create notification for the donor
+                require_once 'Notification.php';
+                $notification = new Notification($this->db);
+                $notification->user_id = $donation['donor_id'];
+                
+                // Format amount with peso sign and 2 decimal places
+                $amount = '₱' . number_format($donation['amount'], 2);
+                
+                if ($status === 'verified') {
+                    $notification->title = 'Donation Verified';
+                    $notification->message = "Your donation of {$amount} has been verified. Thank you for your generosity!";
+                    $notification->type = 'success';
+                } elseif ($status === 'rejected') {
+                    $notification->title = 'Donation Rejected';
+                    $notification->message = "Your donation of {$amount} has been rejected. Reason: {$notes}";
+                    $notification->type = 'error';
+                }
+                
+                if (isset($notification->title)) {
+                    $notification->create();
+                }
+            }
+            
+            $this->db->commit();
+            return true;
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Error updating donation status: " . $e->getMessage());
+            return false;
         }
     }
 }

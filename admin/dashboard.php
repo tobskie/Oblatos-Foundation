@@ -57,18 +57,36 @@ $donor_tiers = [
 
 $donors = $user->read_all('donor');
 while ($donor = $donors->fetch(PDO::FETCH_ASSOC)) {
-    $monthly_total = $donation->get_user_monthly_total($donor['id']);
-    if ($monthly_total >= GOLD_TIER_MIN) {
+    // Get total verified donations for all time (not just current year)
+    $query = "SELECT SUM(d.amount) as total
+              FROM donations d
+              JOIN donation_status_history dsh ON d.id = dsh.donation_id
+              JOIN donation_statuses ds ON dsh.status_id = ds.id
+              WHERE d.donor_id = :donor_id 
+              AND ds.name = 'verified'
+              AND dsh.id = (
+                  SELECT id FROM donation_status_history 
+                  WHERE donation_id = d.id 
+                  ORDER BY changed_at DESC 
+                  LIMIT 1
+              )";
+              
+    $stmt = $db->prepare($query);
+    $stmt->execute(['donor_id' => $donor['id']]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $total_donations = $result['total'] ?? 0;
+    
+    // Assign tier based on total verified donations
+    if ($total_donations >= GOLD_TIER_MIN) {
         $donor_tiers['gold']++;
-    } elseif ($monthly_total >= SILVER_TIER_MIN) {
+    } elseif ($total_donations >= SILVER_TIER_MIN) {
         $donor_tiers['silver']++;
-    } elseif ($monthly_total >= BRONZE_TIER_MIN) {
+    } elseif ($total_donations >= BRONZE_TIER_MIN) {
         $donor_tiers['bronze']++;
-    } elseif ($monthly_total >= BLUE_TIER_MIN) {
+    } elseif ($total_donations >= BLUE_TIER_MIN) {
         $donor_tiers['blue']++;
-    } else {
-        $donor_tiers['blue']++;  // New donors start at blue tier
     }
+    // If they don't meet any tier criteria, don't count them in any tier
 }
 ?>
 

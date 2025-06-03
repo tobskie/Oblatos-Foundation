@@ -22,15 +22,15 @@ A web-based donation management system for Oblatos Foundation that handles donor
 ## Installation
 
 1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/oblatos-foundation.git
+   ```bash
+   git clone https://github.com/yourusername/oblatos-foundation.git
 cd oblatos-foundation
-```
+   ```
 
 2. Install dependencies:
-```bash
-composer install
-```
+   ```bash
+   composer install
+   ```
 
 3. Create configuration files:
 ```bash
@@ -43,16 +43,16 @@ cp .env.example .env
 - Update `.env` with your environment-specific settings
 
 5. Set up the database:
-```bash
+   ```bash
 php cli_run_migration.php
-```
+   ```
 
 6. Set proper permissions:
-```bash
+   ```bash
 chmod 755 -R ./
 chmod 777 -R ./uploads
 chmod 777 -R ./logs
-```
+   ```
 
 ## Directory Structure
 

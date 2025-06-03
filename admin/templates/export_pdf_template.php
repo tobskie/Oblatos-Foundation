@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($report_title); ?></title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -64,11 +64,18 @@
         .chart-box {
             flex: 1;
             min-width: 300px;
+            max-width: 500px;
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             padding: 20px;
             page-break-inside: avoid;
+            margin: 0 auto;
+        }
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+            width: 100%;
         }
         .chart-box h3 {
             margin-top: 0;
@@ -129,6 +136,15 @@
         .no-print {
             margin-bottom: 20px;
         }
+        .error-message {
+            color: #dc2626;
+            background-color: #fee2e2;
+            border: 1px solid #ef4444;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
         @media print {
             .no-print {
                 display: none;
@@ -143,7 +159,15 @@
                 display: table-footer-group;
             }
             .chart-box {
-                break-inside: avoid;
+                max-width: none;
+                width: 100%;
+                height: auto;
+            }
+            .chart-wrapper {
+                height: 400px;
+            }
+            .error-message {
+                display: none !important;
             }
         }
     </style>
@@ -188,7 +212,12 @@
     <div class="chart-container">
         <div class="chart-box">
             <h3>Payment Methods Distribution</h3>
-            <canvas id="paymentMethodsChart"></canvas>
+            <div id="chartError" class="error-message">
+                Unable to load chart. The data is still available in the table below.
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="paymentMethodsChart"></canvas>
+            </div>
         </div>
     </div>
     
@@ -207,53 +236,83 @@
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($filtered_donations as $donation): ?>
+            <?php if (empty($filtered_donations)): ?>
             <tr>
-                <td><?php echo formatDate($donation['created_at']); ?></td>
-                <td><?php echo htmlspecialchars($donation['donor_name']); ?></td>
-                <td><?php echo formatPeso($donation['amount']); ?></td>
-                <td><?php echo formatPaymentMethod($donation['payment_method']); ?></td>
-                <td><?php echo htmlspecialchars($donation['reference_number']); ?></td>
-                <td>
-                    <span class="status-<?php echo $donation['status']; ?>">
-                        <?php echo ucfirst($donation['status']); ?>
-                    </span>
-                </td>
-                <td><?php echo $donation['status'] === 'verified' ? htmlspecialchars($donation['verifier_name']) : '-'; ?></td>
-                <td><?php echo $donation['verification_date'] ? formatDate($donation['verification_date']) : '-'; ?></td>
+                <td colspan="8" style="text-align: center;">No donations found for the selected period.</td>
             </tr>
-            <?php endforeach; ?>
+            <?php else: ?>
+                <?php foreach ($filtered_donations as $donation): ?>
+                <tr>
+                    <td><?php echo formatDate($donation['created_at']); ?></td>
+                    <td><?php echo htmlspecialchars($donation['donor_name'] ?? 'N/A'); ?></td>
+                    <td><?php echo formatPeso($donation['amount']); ?></td>
+                    <td><?php echo formatPaymentMethod($donation['payment_method'] ?? 'N/A'); ?></td>
+                    <td><?php echo htmlspecialchars($donation['reference_number'] ?? 'N/A'); ?></td>
+                    <td>
+                        <span class="status-<?php echo $donation['status']; ?>">
+                            <?php echo ucfirst($donation['status']); ?>
+                        </span>
+                    </td>
+                    <td><?php echo $donation['status'] === 'verified' ? htmlspecialchars($donation['verifier_name'] ?? 'N/A') : '-'; ?></td>
+                    <td><?php echo $donation['verification_date'] ? formatDate($donation['verification_date']) : '-'; ?></td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </tbody>
     </table>
 
     <script>
-        // Configure and render the payment methods chart
-        const paymentMethodsCtx = document.getElementById('paymentMethodsChart').getContext('2d');
-        new Chart(paymentMethodsCtx, {
-            type: 'pie',
-            data: {
-                labels: ['Bank Transfer', 'GCash'],
-                datasets: [{
-                    data: [
-                        <?php echo $payment_methods['bank_transfer']; ?>,
-                        <?php echo $payment_methods['gcash']; ?>
-                    ],
-                    backgroundColor: [
-                        '#4f46e5',
-                        '#10b981'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
+        try {
+            // Configure and render the payment methods chart
+            const paymentMethodsCtx = document.getElementById('paymentMethodsChart').getContext('2d');
+            new Chart(paymentMethodsCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Bank Transfer', 'GCash'],
+                    datasets: [{
+                        data: [
+                            <?php echo $payment_methods['bank_transfer']; ?>,
+                            <?php echo $payment_methods['gcash']; ?>
+                        ],
+                        backgroundColor: [
+                            '#4f46e5',
+                            '#10b981'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 1,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            console.error('Error rendering chart:', error);
+            document.getElementById('chartError').style.display = 'block';
+        }
     </script>
 </body>
 </html> 

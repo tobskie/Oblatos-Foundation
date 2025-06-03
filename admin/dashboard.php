@@ -39,9 +39,37 @@ while ($row = $verified_donations->fetch(PDO::FETCH_ASSOC)) {
 // Get recent donations
 $recent_donations = $donation->read_all(null, null, date('Y-m-d', strtotime('-30 days')));
 
-// Get donation statistics for the current year by month
+// Get monthly donation data for the current year
 $current_year = date('Y');
-$monthly_stats = $donation->get_statistics('monthly');
+$monthly_totals = array_fill(0, 12, 0); // Initialize array with 0s
+$monthly_donations = $donation->get_monthly_totals(null, $current_year);
+foreach ($monthly_donations as $month => $total) {
+    $monthly_totals[$month - 1] = $total;
+}
+
+// Get donor tier distribution
+$donor_tiers = [
+    'blue' => 0,
+    'bronze' => 0,
+    'silver' => 0,
+    'gold' => 0
+];
+
+$donors = $user->read_all('donor');
+while ($donor = $donors->fetch(PDO::FETCH_ASSOC)) {
+    $monthly_total = $donation->get_user_monthly_total($donor['id']);
+    if ($monthly_total >= GOLD_TIER_MIN) {
+        $donor_tiers['gold']++;
+    } elseif ($monthly_total >= SILVER_TIER_MIN) {
+        $donor_tiers['silver']++;
+    } elseif ($monthly_total >= BRONZE_TIER_MIN) {
+        $donor_tiers['bronze']++;
+    } elseif ($monthly_total >= BLUE_TIER_MIN) {
+        $donor_tiers['blue']++;
+    } else {
+        $donor_tiers['blue']++;  // New donors start at blue tier
+    }
+}
 ?>
 
 <main class="flex-1 overflow-y-auto p-5">
@@ -304,32 +332,16 @@ $monthly_stats = $donation->get_statistics('monthly');
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
 <script>
 // Monthly donations chart
-const monthlyDonationsCtx = document.getElementById('monthlyDonationsChart').getContext('2d');
-const monthlyDonationsChart = new Chart(monthlyDonationsCtx, {
+const monthlyCtx = document.getElementById('monthlyDonationsChart').getContext('2d');
+new Chart(monthlyCtx, {
     type: 'bar',
     data: {
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
         datasets: [{
-            label: 'Donations (₱)',
-            data: [
-                <?php 
-                // Initialize array with zeros for all months
-                $monthly_data = array_fill(0, 12, 0);
-                
-                // Fill in actual data from database
-                while ($row = $monthly_stats->fetch(PDO::FETCH_ASSOC)) {
-                    if (substr($row['time_period'], 0, 4) == $current_year) {
-                        $month = intval(substr($row['time_period'], 5, 2)) - 1; // 0-based month index
-                        $monthly_data[$month] = $row['total_amount'];
-                    }
-                }
-                
-                // Output as comma-separated values
-                echo implode(', ', $monthly_data);
-                ?>
-            ],
-            backgroundColor: 'rgba(52, 211, 153, 0.5)',
-            borderColor: 'rgba(16, 185, 129, 1)',
+            label: 'Monthly Donations (PHP)',
+            data: <?php echo json_encode($monthly_totals); ?>,
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+            borderColor: 'rgb(34, 197, 94)',
             borderWidth: 1
         }]
     },
@@ -349,7 +361,7 @@ const monthlyDonationsChart = new Chart(monthlyDonationsCtx, {
             tooltip: {
                 callbacks: {
                     label: function(context) {
-                        return 'Donations: ₱' + context.raw.toLocaleString();
+                        return '₱' + context.raw.toLocaleString();
                     }
                 }
             }
@@ -358,45 +370,29 @@ const monthlyDonationsChart = new Chart(monthlyDonationsCtx, {
 });
 
 // Donor tiers chart
-const donorTiersCtx = document.getElementById('donorTiersChart').getContext('2d');
-
-// Get donor tier counts
-<?php
-// Get all donors
-$donors = $user->read_all('donor');
-$tier_counts = ['Blue' => 0, 'Bronze' => 0, 'Silver' => 0, 'Gold' => 0];
-
-// Calculate tier for each donor
-while ($row = $donors->fetch(PDO::FETCH_ASSOC)) {
-    $user_id = $row['id'];
-    $annual_total = $donation->get_user_total($user_id, $current_year);
-    $tier = getDonorTier($annual_total);
-    $tier_counts[$tier]++;
-}
-?>
-
-const donorTiersChart = new Chart(donorTiersCtx, {
-    type: 'pie',
+const tiersCtx = document.getElementById('donorTiersChart').getContext('2d');
+new Chart(tiersCtx, {
+    type: 'doughnut',
     data: {
-        labels: ['Blue', 'Bronze', 'Silver', 'Gold'],
+        labels: [
+            'Blue (₱' + BLUE_TIER_MIN.toLocaleString() + ' - ₱' + BLUE_TIER_MAX.toLocaleString() + ')',
+            'Bronze (₱' + BRONZE_TIER_MIN.toLocaleString() + ' - ₱' + BRONZE_TIER_MAX.toLocaleString() + ')',
+            'Silver (₱' + SILVER_TIER_MIN.toLocaleString() + ' - ₱' + SILVER_TIER_MAX.toLocaleString() + ')',
+            'Gold (₱' + GOLD_TIER_MIN.toLocaleString() + '+)'
+        ],
         datasets: [{
-            data: [
-                <?php echo $tier_counts['Blue']; ?>, 
-                <?php echo $tier_counts['Bronze']; ?>, 
-                <?php echo $tier_counts['Silver']; ?>, 
-                <?php echo $tier_counts['Gold']; ?>
-            ],
+            data: <?php echo json_encode(array_values($donor_tiers)); ?>,
             backgroundColor: [
-                'rgba(59, 130, 246, 0.7)',    // Blue
-                'rgba(180, 83, 9, 0.7)',      // Bronze
-                'rgba(156, 163, 175, 0.7)',   // Silver
-                'rgba(234, 179, 8, 0.7)'      // Gold
+                'rgba(59, 130, 246, 0.8)',   // Blue
+                'rgba(205, 127, 50, 0.8)',   // Bronze
+                'rgba(192, 192, 192, 0.8)',  // Silver
+                'rgba(255, 215, 0, 0.8)'     // Gold
             ],
             borderColor: [
-                'rgba(59, 130, 246, 1)',
-                'rgba(180, 83, 9, 1)',
-                'rgba(156, 163, 175, 1)',
-                'rgba(234, 179, 8, 1)'
+                'rgb(59, 130, 246)',
+                'rgb(205, 127, 50)',
+                'rgb(192, 192, 192)',
+                'rgb(255, 215, 0)'
             ],
             borderWidth: 1
         }]
@@ -412,9 +408,9 @@ const donorTiersChart = new Chart(donorTiersCtx, {
                     label: function(context) {
                         const label = context.label || '';
                         const value = context.raw || 0;
-                        const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
                         const percentage = Math.round((value / total) * 100);
-                        return `${label}: ${value} (${percentage}%)`;
+                        return `${label}: ${value} donors (${percentage}%)`;
                     }
                 }
             }

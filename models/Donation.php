@@ -339,28 +339,92 @@ class Donation {
         }
     }
     
-    // Get monthly totals for a user
-    public function get_monthly_totals($user_id, $year) {
-        $query = "SELECT 
-                    MONTH(created_at) as month,
-                    SUM(amount) as total
-                  FROM " . $this->table_name . " 
-                  WHERE donor_id = :user_id
-                  AND status = 'verified'
-                  AND YEAR(created_at) = :year
-                  GROUP BY MONTH(created_at)
-                  ORDER BY MONTH(created_at)";
-
-        $stmt = $this->db->prepare($query);
-        $stmt->bindParam(":user_id", $user_id);
-        $stmt->bindParam(":year", $year);
-        $stmt->execute();
-
-        $monthly_totals = array_fill(1, 12, 0); // Initialize all months with 0
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            $monthly_totals[(int)$row['month']] = (float)$row['total'];
+    // Get monthly totals for all users or a specific user
+    public function get_monthly_totals($user_id = null, $year = null) {
+        try {
+            // Base query using the normalized schema
+            $query = "SELECT MONTH(d.created_at) as month,
+                            COALESCE(SUM(d.amount), 0) as total
+                     FROM " . $this->table_name . " d
+                     LEFT JOIN (
+                         SELECT donation_id, MAX(changed_at) as latest_status
+                         FROM donation_status_history
+                         GROUP BY donation_id
+                     ) latest ON d.id = latest.donation_id
+                     LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
+                         AND latest.latest_status = dsh.changed_at
+                     LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
+                     WHERE ds.name = 'verified'";
+            
+            // Add user filter if provided
+            if ($user_id !== null) {
+                $query .= " AND d.donor_id = :user_id";
+            }
+            
+            // Add year filter if provided
+            if ($year !== null) {
+                $query .= " AND YEAR(d.created_at) = :year";
+            }
+            
+            $query .= " GROUP BY MONTH(d.created_at)";
+            
+            $stmt = $this->db->prepare($query);
+            
+            // Bind parameters
+            if ($user_id !== null) {
+                $stmt->bindParam(":user_id", $user_id);
+            }
+            if ($year !== null) {
+                $stmt->bindParam(":year", $year);
+            }
+            
+            $stmt->execute();
+            
+            // Initialize array with all months set to 0
+            $monthly_totals = array_fill(1, 12, 0);
+            
+            // Fill in actual totals
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $monthly_totals[(int)$row['month']] = (float)$row['total'];
+            }
+            
+            return $monthly_totals;
+            
+        } catch (PDOException $e) {
+            // If there's an error with the normalized schema, try the simple schema
+            $query = "SELECT MONTH(created_at) as month,
+                            COALESCE(SUM(amount), 0) as total
+                     FROM " . $this->table_name . "
+                     WHERE status = 'verified'";
+            
+            if ($user_id !== null) {
+                $query .= " AND donor_id = :user_id";
+            }
+            
+            if ($year !== null) {
+                $query .= " AND YEAR(created_at) = :year";
+            }
+            
+            $query .= " GROUP BY MONTH(created_at)";
+            
+            $stmt = $this->db->prepare($query);
+            
+            if ($user_id !== null) {
+                $stmt->bindParam(":user_id", $user_id);
+            }
+            if ($year !== null) {
+                $stmt->bindParam(":year", $year);
+            }
+            
+            $stmt->execute();
+            
+            $monthly_totals = array_fill(1, 12, 0);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $monthly_totals[(int)$row['month']] = (float)$row['total'];
+            }
+            
+            return $monthly_totals;
         }
-        return $monthly_totals;
     }
     
     // Get yearly totals for a user

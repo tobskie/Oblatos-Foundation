@@ -36,25 +36,40 @@ try {
     $month = isset($_GET['month']) ? $_GET['month'] : 'all';
     $status = isset($_GET['status']) ? $_GET['status'] : 'all';
 
+    // Get current user's name for the report
+    $current_user = new User($db);
+    $current_user->id = $_SESSION['user_id'];
+    $current_user->read_one();
+    $current_user_name = $current_user->full_name ?? $_SESSION['username'];
+
     // Instantiate models
     $donation = new Donation($db);
-    $user = new User($db);
 
-    // Build the query based on filters
+    // Build the query based on filters using the normalized schema
     $query = "SELECT d.*, 
-                     u.full_name as donor_name, u.email as donor_email,
-                     v.full_name as verifier_name,
-                     CASE 
-                         WHEN d.status = 'verified' THEN COALESCE(d.verification_date, d.date_verified, d.created_at)
-                         ELSE NULL
-                     END as effective_verification_date,
-                     CASE
-                         WHEN d.status = 'verified' THEN 'verified'
-                         ELSE 'pending'
-                     END as effective_status
+                     pm.name as payment_method,
+                     dr.receipt_number,
+                     ds.name as status,
+                     dsh.changed_by as verified_by,
+                     dsh.changed_at as verification_date,
+                     u.email as donor_email,
+                     up.full_name as donor_name,
+                     vup.full_name as verifier_name
               FROM donations d
+              LEFT JOIN payment_methods pm ON d.payment_method_id = pm.id
+              LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
+              LEFT JOIN (
+                  SELECT donation_id, MAX(changed_at) as latest_status
+                  FROM donation_status_history
+                  GROUP BY donation_id
+              ) latest ON d.id = latest.donation_id
+              LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
+                  AND latest.latest_status = dsh.changed_at
+              LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
               LEFT JOIN users u ON d.donor_id = u.id
-              LEFT JOIN users v ON d.verified_by = v.id
+              LEFT JOIN user_profiles up ON u.id = up.user_id
+              LEFT JOIN users vu ON dsh.changed_by = vu.id
+              LEFT JOIN user_profiles vup ON vu.id = vup.user_id
               WHERE 1=1";
 
     $params = array();
@@ -73,7 +88,7 @@ try {
 
     // Add status filter if not 'all'
     if ($status !== 'all') {
-        $query .= " AND d.status = :status";
+        $query .= " AND ds.name = :status";
         $params[':status'] = $status;
     }
 
@@ -100,30 +115,19 @@ try {
         $transaction_count++;
         $total_amount += floatval($row['amount']);
         
-        // Count payment methods (case-sensitive)
-        if (isset($row['payment_method'])) {
-            $method = strtolower($row['payment_method']);
-            if (isset($payment_methods[$method])) {
-                $payment_methods[$method]++;
-            }
+        // Count payment methods
+        $method = strtolower($row['payment_method'] ?? 'unknown');
+        if (isset($payment_methods[$method])) {
+            $payment_methods[$method]++;
         }
 
-        // Debug information
-        error_log("Donation ID: " . $row['id']);
-        error_log("Status: " . $row['status']);
-        error_log("Effective Status: " . $row['effective_status']);
-        error_log("Verified By: " . ($row['verified_by'] ?? 'null'));
-        error_log("Verification Date: " . ($row['verification_date'] ?? 'null'));
-        error_log("Effective Verification Date: " . ($row['effective_verification_date'] ?? 'null'));
-        error_log("Created At: " . ($row['created_at'] ?? 'null'));
-        error_log("-------------------");
-
-        // Format verification date and status
-        $row['status'] = $row['effective_status'];
-        if ($row['status'] === 'verified') {
-            $row['verification_date'] = $row['effective_verification_date'];
-        } else {
-            $row['verification_date'] = null;
+        // Set default status if null
+        $row['status'] = $row['status'] ?? 'pending';
+        
+        // Format dates
+        $row['created_at'] = date('Y-m-d H:i:s', strtotime($row['created_at']));
+        if (!empty($row['verification_date'])) {
+            $row['verification_date'] = date('Y-m-d H:i:s', strtotime($row['verification_date']));
         }
         
         $filtered_donations[] = $row;
@@ -213,6 +217,11 @@ try {
         <div class="error-container">
             <h1 class="error-title">Error Generating Report</h1>
             <p class="error-message">We encountered an error while generating your report. Please try again later or contact support if the problem persists.</p>
+            <?php if (isLoggedIn() && hasRole('admin')): ?>
+            <p class="error-message" style="margin-top: 10px; font-family: monospace; font-size: 12px;">
+                Error details: <?php echo htmlspecialchars($e->getMessage()); ?>
+            </p>
+            <?php endif; ?>
         </div>
         <a href="dashboard.php" class="back-button">Back to Dashboard</a>
     </body>

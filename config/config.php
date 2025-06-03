@@ -17,19 +17,19 @@ define('SILVER_TIER_MIN', 5000);  // ₱5,000 - ₱9,990 monthly
 define('SILVER_TIER_MAX', 9990);
 define('GOLD_TIER_MIN', 10000);   // ₱10,000+ monthly
 
-// Session configuration
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_only_cookies', 1);
-session_start();
-
 // Error reporting (set to 0 in production)
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Function to format currency in Philippine Peso
-function formatPeso($amount) {
-    return '₱' . number_format($amount, 2);
+// Session configuration - MUST be before session_start
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+    session_start();
 }
+
+// Include helper functions
+require_once __DIR__ . '/../utils/format_helpers.php';
 
 // Function to check if user is logged in
 function isLoggedIn() {

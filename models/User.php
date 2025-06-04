@@ -266,7 +266,7 @@ class User {
     public function read_one() {
         try {
             $query = "SELECT u.id, u.uuid, u.username, u.email, u.password, u.created_at,
-                             up.full_name, up.display_name, up.status,
+                             up.full_name, up.display_name, up.phone_number, up.status,
                              GROUP_CONCAT(r.name) as roles
                       FROM " . $this->table_name . " u
                       LEFT JOIN user_profiles up ON u.id = up.user_id
@@ -291,6 +291,7 @@ class User {
                 $this->password = $row['password'];
                 $this->full_name = $row['full_name'];
                 $this->display_name = $row['display_name'];
+                $this->phone_number = $row['phone_number'];
                 $this->status = $row['status'] ?? 'active';
                 $this->created_at = $row['created_at'];
                 $this->roles = $row['roles'] ? explode(',', $row['roles']) : [];
@@ -327,6 +328,7 @@ class User {
                 $this->status = $row['status'] ?? 'active';
                 $this->created_at = $row['created_at'];
                 $this->roles = [$row['role']];
+                $this->phone_number = null; // Set default value for old schema
                 
                 return true;
             }

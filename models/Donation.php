@@ -735,39 +735,31 @@ class Donation {
     // Get all donations for a specific user
     public function get_user_donations($user_id) {
         try {
-            // First try with all fields including verified_at
-            $query = "SELECT d.*, 
-                         u.full_name as donor_name,
-                         u.email as donor_email,
-                         v.full_name as verifier_name,
-                         DATE_FORMAT(d.verified_at, '%Y-%m-%d %H:%i:%s') as verified_at_formatted
-                  FROM " . $this->table_name . " d
-                  LEFT JOIN users u ON d.donor_id = u.id
-                  LEFT JOIN users v ON d.verified_by = v.id
-                  WHERE d.donor_id = :user_id
-                  ORDER BY d.created_at DESC";
-            
-            // Prepare the query
-            $stmt = $this->db->prepare($query);
-            
-            // Bind the user ID
-            $stmt->bindParam(':user_id', $user_id);
-            
-            // Execute the query
-            $stmt->execute();
-            
-            return $stmt;
-        } catch (PDOException $e) {
-            // If there's an error with verified_at or other fields, try with minimal fields
-            $query = "SELECT d.id, d.donor_id, d.amount, d.payment_method, d.reference_number, 
-                            d.status, d.verified_by, d.verified_at, d.created_at,
-                            u.full_name as donor_name,
+            $query = "SELECT d.id, d.donor_id, d.amount, d.reference_number, d.created_at,
+                            pm.name as payment_method,
+                            dr.receipt_number, dr.payment_proof,
+                            ds.name as status,
+                            dsh.changed_by as verified_by,
+                            dsh.changed_at as verified_at,
+                            up.full_name as donor_name,
                             u.email as donor_email,
-                            v.full_name as verifier_name,
-                            DATE_FORMAT(d.verified_at, '%Y-%m-%d %H:%i:%s') as verified_at_formatted
+                            vup.full_name as verifier_name,
+                            DATE_FORMAT(dsh.changed_at, '%Y-%m-%d %H:%i:%s') as verified_at_formatted
                      FROM " . $this->table_name . " d
+                     JOIN payment_methods pm ON d.payment_method_id = pm.id
+                     LEFT JOIN donation_receipts dr ON d.id = dr.donation_id
+                     LEFT JOIN (
+                         SELECT donation_id, MAX(changed_at) as latest_status
+                         FROM donation_status_history
+                         GROUP BY donation_id
+                     ) latest ON d.id = latest.donation_id
+                     LEFT JOIN donation_status_history dsh ON latest.donation_id = dsh.donation_id 
+                         AND latest.latest_status = dsh.changed_at
+                     LEFT JOIN donation_statuses ds ON dsh.status_id = ds.id
                      LEFT JOIN users u ON d.donor_id = u.id
-                     LEFT JOIN users v ON d.verified_by = v.id
+                     LEFT JOIN user_profiles up ON u.id = up.user_id
+                     LEFT JOIN users vu ON dsh.changed_by = vu.id
+                     LEFT JOIN user_profiles vup ON vu.id = vup.user_id
                      WHERE d.donor_id = :user_id
                      ORDER BY d.created_at DESC";
             
@@ -781,6 +773,9 @@ class Donation {
             $stmt->execute();
             
             return $stmt;
+        } catch (PDOException $e) {
+            error_log("Error in get_user_donations: " . $e->getMessage());
+            throw $e;
         }
     }
     
